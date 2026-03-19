@@ -5,46 +5,47 @@ import { createBrowserClient } from '@supabase/ssr'
 
 export default function Home() {
   const [workoutName, setWorkoutName] = useState('')
-  const [workouts, setWorkouts] = useState<any[]>([]) // Tänne tallennetaan haetut treenit
+  const [workouts, setWorkouts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-  const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
-  // 1. Funktio, joka hakee treenit Supabasesta
+  // Haetaan treenit
   const fetchWorkouts = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('workouts')
       .select('*')
-      .order('id', { ascending: false }) // Uusimmat ensin
-
+      .order('id', { ascending: false })
     if (data) setWorkouts(data)
-    if (error) console.error("Haku epäonnistui:", error)
   }
 
-  // 2. Haetaan treenit heti, kun sivu avataan
-  useEffect(() => {
-    fetchWorkouts()
-  }, [])
+  useEffect(() => { fetchWorkouts() }, [])
 
+  // Lisätään treeni
   const addWorkout = async () => {
-    if (!workoutName) return alert('Kirjoita treenin nimi!')
-    
+    if (!workoutName) return
     setLoading(true)
-    try {
-      const { error } = await supabase
-        .from('workouts')
-        .insert([{ name: workoutName }])
+    await supabase.from('workouts').insert([{ name: workoutName }])
+    setWorkoutName('')
+    await fetchWorkouts()
+    setLoading(false)
+  }
 
-      if (error) throw error
+  // UUSI: Poistetaan treeni ID:n perusteella
+  const deleteWorkout = async (id: number) => {
+    const { error } = await supabase
+      .from('workouts')
+      .delete()
+      .eq('id', id)
 
-      setWorkoutName('')
-      fetchWorkouts() // 3. Päivitetään lista heti tallennuksen jälkeen
-    } catch (error: any) {
-      alert('Virhe: ' + error.message)
-    } finally {
-      setLoading(false)
+    if (!error) {
+      // Päivitetään lista heti poiston jälkeen
+      fetchWorkouts()
+    } else {
+      alert('Poisto epäonnistui: ' + error.message)
     }
   }
 
@@ -52,44 +53,51 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-md mx-auto space-y-6">
         
-        {/* Lomake */}
+        {/* Syöttölomake */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
           <h1 className="text-3xl font-extrabold text-slate-900 text-center mb-8">
             GymTracker <span className="text-blue-600">Pro</span> 🏋️
           </h1>
-
-          <div className="space-y-4">
+          <div className="flex gap-2">
             <input 
               type="text" 
               placeholder="Mitä treenasit?"
               value={workoutName}
               onChange={(e) => setWorkoutName(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+              className="flex-1 px-4 py-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
             />
             <button 
               onClick={addWorkout}
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-lg transition-all active:scale-95 disabled:opacity-50"
             >
-              {loading ? 'Tallennetaan...' : 'Tallenna treeni'}
+              {loading ? '...' : 'Lisää'}
             </button>
           </div>
         </div>
 
-        {/* Treenilista */}
+        {/* Lista ja poistonapit */}
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-          <h2 className="text-xl font-bold text-slate-800 mb-4 text-center">Treenihistoria</h2>
-          
+          <h2 className="text-xl font-bold text-slate-800 mb-4">Treenihistoria</h2>
           <div className="space-y-2">
             {workouts.length === 0 ? (
-              <p className="text-center text-slate-400">Ei vielä tallennettuja treenejä.</p>
+              <p className="text-center text-slate-400 py-4 text-sm">Ei vielä treenejä. Lisää ensimmäinen!</p>
             ) : (
               workouts.map((workout) => (
-                <div key={workout.id} className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-slate-700 flex justify-between items-center">
-                  <span className="font-medium">{workout.name}</span>
-                  <span className="text-xs text-slate-400">
-                    {new Date(workout.created_at).toLocaleDateString('fi-FI')}
-                  </span>
+                <div key={workout.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center group transition-all hover:bg-white hover:shadow-md">
+                  <div>
+                    <p className="font-semibold text-slate-700">{workout.name}</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">
+                      {new Date(workout.created_at).toLocaleDateString('fi-FI')}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => deleteWorkout(workout.id)}
+                    className="text-slate-300 hover:text-red-500 p-2 transition-colors"
+                    title="Poista treeni"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                  </button>
                 </div>
               ))
             )}
